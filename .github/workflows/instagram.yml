@@ -1,0 +1,35 @@
+name: Post today's Instagram Reel
+on:
+  schedule:
+    - cron: "15 14 * * *"  # 19:45 IST (GitHub may start a few minutes late)
+  workflow_dispatch:
+    inputs:
+      date: {description: "Post date YYYY-MM-DD (blank = today in India)", required: false}
+permissions:
+  contents: write
+jobs:
+  instagram:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python scripts/instagram_post.py
+        env:
+          POST_DATE: ${{ inputs.date }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      - name: Save what was posted
+        run: |
+          git config user.name "autopost-bot"; git config user.email "autopost@users.noreply.github.com"
+          git add posts/*/done.json || true
+          git commit -m "Instagram posted $(date -u +%F)" || echo "nothing to commit"
+          git push || true
+      - name: Refresh Instagram token (keeps it valid beyond 60 days)
+        if: ${{ env.GH_PAT != '' }}
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: |
+          NEW=$(python scripts/refresh_instagram_token.py)
+          GH_TOKEN=$GH_PAT gh secret set IG_ACCESS_TOKEN --body "$NEW" --repo ${{ github.repository }}
